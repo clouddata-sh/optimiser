@@ -1,0 +1,33 @@
+image: golang:latest
+
+variables:
+  DOCKER_TLS_CERTDIR: "/certs"
+
+stages:
+  - test
+  - build
+
+test_unit:
+  stage: test
+  script: go test -v $(go list ./... )
+
+test_syntax:
+  stage: test
+  script:
+    - go fmt $(go list ./...)
+    - go vet $(go list ./...)
+
+build_code:
+  stage: build
+  script:
+    - go build -race -ldflags "-extldflags '-static'"
+
+build_image:
+  image: docker:19.03.12
+  services:
+    - docker:19.03.12-dind
+  before_script:
+    - docker info
+  stage: build
+  script:
+    - docker build -t optimizer .
