@@ -9,6 +9,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/spf13/viper"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -20,6 +22,13 @@ func calculateReduntantNode(totalCpu map[string]int64, usedCpu map[string]int64,
 	if len(totalCpu) == 1 {
 		log.Info("Only one node in cluster, no redundant nodes.")
 		return false
+	}
+	// remove ignored nodes from usedCpu
+	// TODO: refactor
+	for node, _ := range usedCpu {
+		if _, ok := totalCpu[node]; !ok {
+			delete(usedCpu, node)
+		}
 	}
 	// get node with less requested CPU
 	// get first key of map and cast to string
@@ -41,6 +50,7 @@ func calculateReduntantNode(totalCpu map[string]int64, usedCpu map[string]int64,
 		if cpu - usedCpu[node] > minRequestedCpu {
 			if usedMem[minNode] < totalMem[node] - usedMem[node] {
 				log.Info("Node ", node, " has enough free cpu (", cpu-usedCpu[node], ") and memory for pods from ", minNode, " node.")
+				log.Info("Node ", minNode, " can be removed from cluster.")
 				return true
 			} else {
 				log.Debug("Node ", node, " has only ", totalMem[node] - usedMem[node], " free memory but pods require ", usedMem[minNode])
@@ -48,6 +58,7 @@ func calculateReduntantNode(totalCpu map[string]int64, usedCpu map[string]int64,
 			// break
 		}
 	}
+	log.Info("No nodes can be removed from cluster.")
 	return false
 }
 
@@ -56,8 +67,20 @@ func init() {
 		DisableColors: true,
 		FullTimestamp: true,
 	})
+	// log.SetLevel(log.DebugLevel)
 	log.SetLevel(log.InfoLevel)
 	log.Debug("Initialize optimiser.")
+
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("/etc/optimiser")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil { // Handle errors reading the config file
+		log.Fatal("Fatal error config file: ", err)
+	}
+	x := viper.Get("ignored_labels")
+	log.Error(x)
 }
 
 func main() {
@@ -82,10 +105,14 @@ func main() {
 		panic(err.Error())
 	}
 
+	// get configuration
+	omitLabels := viper.GetStringMapString("ignored_labels")
+
 	for {
 		log.Debug("Start main loop.")
 		// getFreeCpu for each node
-		nodesCpu := getNodesCpu(clientset)
+		nodesCpu := getNodesCpu(clientset, omitLabels)
+		// log.Fatal(nodesCpu)
 
 		// getTotalMemory for each node
 		nodesTotalMemory := getNodesTotalMemory(clientset)
@@ -99,6 +126,7 @@ func main() {
 			panic(err.Error())
 		}
 
+		// TODO: remove omit nodes from nodesUsedCpu
 		for _, p := range pods.Items {
 			containers := p.Spec.Containers
 			for _, c := range containers {
@@ -122,6 +150,6 @@ func main() {
 
 		calculateReduntantNode(nodesCpu, nodesUsedCpu, nodesTotalMemory, nodesUsedMemory)
 
-		time.Sleep(10 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }

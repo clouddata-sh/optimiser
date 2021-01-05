@@ -1,0 +1,2 @@
+ignored_labels:
+  ec2.amazonaws.com/type: core
