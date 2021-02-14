@@ -9,4 +9,6 @@ RUN go build -o /go/bin/optimizer
 
 FROM gcr.io/distroless/base
 COPY --from=build-env /go/bin/optimizer /
+ADD config.yaml /
+
 CMD ["/optimizer"]
