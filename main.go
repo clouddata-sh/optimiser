@@ -146,11 +146,13 @@ func main() {
 
     // TODO: remove omit nodes from nodesUsedCpu
     for _, p := range pods.Items {
-      containers := p.Spec.Containers
-      for _, c := range containers {
-        if c.Resources.Requests.Cpu() != nil {
-          nodesUsedCpu[p.Spec.NodeName] += c.Resources.Requests.Cpu().MilliValue()
-          nodesUsedMemory[p.Spec.NodeName] += c.Resources.Requests.Memory().Value()
+      if (p.Status.Phase == "Running" || p.Status.Phase == "Pending") {
+        containers := p.Spec.Containers
+        for _, c := range containers {
+          if c.Resources.Requests.Cpu() != nil {
+            nodesUsedCpu[p.Spec.NodeName] += c.Resources.Requests.Cpu().MilliValue()
+            nodesUsedMemory[p.Spec.NodeName] += c.Resources.Requests.Memory().Value()
+          }
         }
       }
     }
